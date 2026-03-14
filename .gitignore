@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.skill-installer/
+.agents/skills/
+*.log
+.env
+.env.*
+*.tsbuildinfo
+.DS_Store
+Thumbs.db

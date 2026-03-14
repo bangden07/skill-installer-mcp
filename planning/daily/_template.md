@@ -1,0 +1,56 @@
+# Daily Log - DXX
+
+## Focus
+
+Fokus utama hari ini:
+- ...
+- ...
+
+## Planned Tasks
+
+- [ ] ...
+- [ ] ...
+- [ ] ...
+
+## Progress
+
+Yang dikerjakan hari ini:
+- ...
+- ...
+- ...
+
+## Decisions
+
+Keputusan penting hari ini:
+- ...
+
+## Problems
+
+Masalah yang muncul:
+- ...
+- ...
+
+## Mitigation
+
+Cara mengatasi atau langkah lanjut:
+- ...
+- ...
+
+## Deliverables
+
+Output yang selesai hari ini:
+- ...
+- ...
+
+## Status
+
+Status akhir hari:
+- `on track`
+- `partial`
+- `blocked`
+
+## Next Day
+
+Target hari berikutnya:
+- ...
+- ...

@@ -1,0 +1,25 @@
+{
+  "name": "skill-installer-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.6.0",
+  "description": "MCP server for cross-agent skill installation.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "pnpm build && node --test \"dist/**/*.test.js\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node --env-file=.env dist/index.js",
+    "dev": "node --env-file=.env --enable-source-maps --loader ts-node/esm src/index.ts",
+    "smoke:local": "node --enable-source-maps --loader ts-node/esm src/scripts/smoke-local-install.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2"
+  }
+}
