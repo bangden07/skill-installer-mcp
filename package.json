@@ -43,6 +43,10 @@
   },
   "files": [
     "dist",
+    "!dist/**/*.test.js",
+    "!dist/**/*.test.js.map",
+    "!dist/test",
+    "!dist/scripts",
     "README.md",
     "LICENSE"
   ],
