@@ -1,10 +1,54 @@
 {
   "name": "skill-installer-mcp",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "packageManager": "pnpm@10.6.0",
-  "description": "MCP server for cross-agent skill installation.",
+  "description": "MCP server for universal cross-agent skill installation. Discover, recommend, install, sync, update, and manage agent skills across Cursor, Claude Code, OpenCode, Codex, Windsurf, and Amp.",
+  "license": "MIT",
+  "author": "bangden07",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bangden07/skill-installer-mcp.git"
+  },
+  "homepage": "https://github.com/bangden07/skill-installer-mcp",
+  "bugs": {
+    "url": "https://github.com/bangden07/skill-installer-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "skill-installer",
+    "agent-skills",
+    "cursor",
+    "claude-code",
+    "opencode",
+    "codex",
+    "windsurf",
+    "amp",
+    "vibecoding",
+    "ai-coding"
+  ],
+  "bin": {
+    "skill-installer-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./installer": "./dist/installer/core/install-skills.js",
+    "./planner": "./dist/installer/core/plan-skill-install.js",
+    "./analyzer": "./dist/project-analyzer/analyze-project.js",
+    "./recommender": "./dist/recommender/recommend-skills.js",
+    "./registry": "./dist/registry/resolver.js",
+    "./adapters": "./dist/adapters/agents/registry.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "pnpm build && node --test \"dist/**/*.test.js\"",
@@ -12,7 +56,8 @@
     "start": "node --env-file=.env dist/index.js",
     "dev": "node --env-file=.env --enable-source-maps --loader ts-node/esm src/index.ts",
     "smoke:local": "node --enable-source-maps --loader ts-node/esm src/scripts/smoke-local-install.ts",
-    "smoke:remote": "pnpm build && node --enable-source-maps dist/scripts/smoke-remote-skills-sh.js"
+    "smoke:remote": "pnpm build && node --enable-source-maps dist/scripts/smoke-remote-skills-sh.js",
+    "prepublishOnly": "pnpm build && pnpm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

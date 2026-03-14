@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { createMcpServer } from "./mcp/server.js";
 
 async function main(): Promise<void> {
