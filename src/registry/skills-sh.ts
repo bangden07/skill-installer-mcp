@@ -12,28 +12,30 @@ import { normalizeFetchedSkill } from "./normalize.js";
  * Resolves skills from the skills.sh ecosystem by fetching from
  * the skills.sh API / raw GitHub content.
  *
- * Selector format: skills.sh:<owner>/<name>
- * Locator stored as: <owner>/<name>
+ * Selector formats:
+ *   - 2-segment: "owner/repo"       → SKILL.md lives at repo root
+ *   - 3-segment: "owner/repo/skill" → SKILL.md lives in a subdirectory
+ *   - Prefixed:  "skills.sh:owner/repo[/skill]"
  *
- * The skills.sh ecosystem stores skills as GitHub repos or
- * GitHub directories following the Agent Skills / SKILL.md convention.
+ * The skills.sh leaderboard commonly uses 3-segment selectors for
+ * multi-skill repos like "anthropics/skills/frontend-design" where
+ * owner=anthropics, repo=skills, skillPath=frontend-design.
+ *
+ * In these repos, skills typically live under a "skills/" subdirectory
+ * (e.g., skills/frontend-design/SKILL.md). The resolver tries multiple
+ * candidate paths to locate the skill automatically.
  *
  * Resolution strategy:
- * 1. Try https://raw.githubusercontent.com/<owner>/<name>/main/SKILL.md
- * 2. Fall back to https://raw.githubusercontent.com/<owner>/<name>/master/SKILL.md
- * 3. If revision specified, use that branch directly
+ * 1. Try https://raw.githubusercontent.com/<owner>/<repo>/<branch>/[resolved_prefix/]SKILL.md
+ * 2. For 3-segment selectors, try multiple candidate prefixes:
+ *    - {skillPath}/             (direct subdirectory)
+ *    - skills/{skillPath}/      (most common: anthropics/skills, obra/superpowers, etc.)
+ *    - .agents/skills/{skillPath}/
+ *    - .claude/skills/{skillPath}/
+ * 3. Fall back to repo tree search for exact directory name match
  */
 
 const GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
-
-/** Standard skill directories to try fetching */
-const KNOWN_SKILL_FILES = [
-  "SKILL.md",
-  "scripts/",
-  "references/",
-  "assets/",
-  "mcp.json",
-];
 
 export interface SkillsShSource {
   canHandle(source: SkillSourceRef): boolean;
@@ -56,17 +58,52 @@ export class SkillsShSourceImpl implements SkillsShSource {
     source: SkillSourceRef,
     _ctx: ExecutionContext,
   ): Promise<FetchedSkill> {
-    const { owner, name } = parseSkillsShLocator(source.locator);
-    const branch = source.revision ?? (await detectDefaultBranch(owner, name));
+    const parsed = parseSkillsShLocator(source.locator);
+    // First detect branch, then resolve the actual skill prefix
+    const branch =
+      source.revision ?? (await detectDefaultBranchForSkill(parsed));
 
-    const skillMdUrl = `${GITHUB_RAW_BASE}/${owner}/${name}/${branch}/SKILL.md`;
+    const resolvedPrefix = await resolveSkillPrefix(
+      parsed.owner,
+      parsed.repo,
+      branch,
+      parsed.skillPath,
+    );
+
+    if (resolvedPrefix === null) {
+      throw new InstallerError(
+        "FETCH_FAILED",
+        `Could not find SKILL.md in skills.sh source: ${source.locator} (tried branch: ${branch}, skill: ${parsed.skillPath ?? "root"})`,
+        {
+          retryable: true,
+          details: {
+            owner: parsed.owner,
+            repo: parsed.repo,
+            skillPath: parsed.skillPath,
+            branch,
+          },
+        },
+      );
+    }
+
+    const prefix = resolvedPrefix ? `${resolvedPrefix}/` : "";
+    const skillMdUrl = `${GITHUB_RAW_BASE}/${parsed.owner}/${parsed.repo}/${branch}/${prefix}SKILL.md`;
     const content = await fetchText(skillMdUrl);
 
     if (content === null) {
       throw new InstallerError(
         "FETCH_FAILED",
         `Could not fetch SKILL.md from skills.sh source: ${source.locator} (tried branch: ${branch})`,
-        { retryable: true, details: { owner, name, branch } },
+        {
+          retryable: true,
+          details: {
+            owner: parsed.owner,
+            repo: parsed.repo,
+            skillPath: parsed.skillPath,
+            resolvedPrefix,
+            branch,
+          },
+        },
       );
     }
 
@@ -79,18 +116,53 @@ export class SkillsShSourceImpl implements SkillsShSource {
     source: SkillSourceRef,
     _ctx: ExecutionContext,
   ): Promise<FetchedSkill> {
-    const { owner, name } = parseSkillsShLocator(source.locator);
-    const branch = source.revision ?? (await detectDefaultBranch(owner, name));
+    const parsed = parseSkillsShLocator(source.locator);
+    const branch =
+      source.revision ?? (await detectDefaultBranchForSkill(parsed));
+
+    const resolvedPrefix = await resolveSkillPrefix(
+      parsed.owner,
+      parsed.repo,
+      branch,
+      parsed.skillPath,
+    );
+
+    if (resolvedPrefix === null) {
+      throw new InstallerError(
+        "FETCH_FAILED",
+        `Could not find SKILL.md in skills.sh source: ${source.locator}`,
+        {
+          retryable: true,
+          details: {
+            owner: parsed.owner,
+            repo: parsed.repo,
+            skillPath: parsed.skillPath,
+            branch,
+          },
+        },
+      );
+    }
+
+    const prefix = resolvedPrefix ? `${resolvedPrefix}/` : "";
 
     // Fetch SKILL.md (required)
-    const skillMdUrl = `${GITHUB_RAW_BASE}/${owner}/${name}/${branch}/SKILL.md`;
+    const skillMdUrl = `${GITHUB_RAW_BASE}/${parsed.owner}/${parsed.repo}/${branch}/${prefix}SKILL.md`;
     const skillMdContent = await fetchText(skillMdUrl);
 
     if (skillMdContent === null) {
       throw new InstallerError(
         "FETCH_FAILED",
         `Could not fetch SKILL.md from skills.sh source: ${source.locator}`,
-        { retryable: true, details: { owner, name, branch } },
+        {
+          retryable: true,
+          details: {
+            owner: parsed.owner,
+            repo: parsed.repo,
+            skillPath: parsed.skillPath,
+            resolvedPrefix,
+            branch,
+          },
+        },
       );
     }
 
@@ -99,18 +171,22 @@ export class SkillsShSourceImpl implements SkillsShSource {
     ];
 
     // Try fetching mcp.json (optional)
-    const mcpJsonUrl = `${GITHUB_RAW_BASE}/${owner}/${name}/${branch}/mcp.json`;
+    const mcpJsonUrl = `${GITHUB_RAW_BASE}/${parsed.owner}/${parsed.repo}/${branch}/${prefix}mcp.json`;
     const mcpJsonContent = await fetchText(mcpJsonUrl);
     if (mcpJsonContent !== null) {
       files.push({ relativePath: "mcp.json", content: mcpJsonContent });
     }
 
     // Use GitHub API to list repo contents and fetch all files
-    // For MVP, we use a pragmatic approach: fetch known skill file patterns
-    // and attempt to list via the GitHub Trees API
-    const treeFiles = await fetchRepoTree(owner, name, branch);
+    // For multi-skill repos, scope to the resolved skill directory
+    const treeFiles = await fetchRepoTree(
+      parsed.owner,
+      parsed.repo,
+      branch,
+      resolvedPrefix || undefined,
+    );
     if (treeFiles.length > 0) {
-      // We got the full tree — fetch each file (excluding SKILL.md and mcp.json already fetched)
+      // We got the file list — fetch each file (excluding SKILL.md and mcp.json already fetched)
       const alreadyFetched = new Set(files.map((f) => f.relativePath));
 
       for (const filePath of treeFiles) {
@@ -118,7 +194,8 @@ export class SkillsShSourceImpl implements SkillsShSource {
         // Only fetch skill-relevant files (skip .git metadata, CI configs, etc.)
         if (!isSkillRelevantFile(filePath)) continue;
 
-        const fileUrl = `${GITHUB_RAW_BASE}/${owner}/${name}/${branch}/${filePath}`;
+        // Build the raw URL: prefix + relativePath
+        const fileUrl = `${GITHUB_RAW_BASE}/${parsed.owner}/${parsed.repo}/${branch}/${prefix}${filePath}`;
         const content = await fetchText(fileUrl);
         if (content !== null) {
           files.push({ relativePath: filePath, content });
@@ -131,21 +208,46 @@ export class SkillsShSourceImpl implements SkillsShSource {
 }
 
 /**
- * Parse a skills.sh locator: "owner/name" or just "name" (assumes skills-sh org).
+ * Parsed skills.sh locator with optional subdirectory path.
+ *
+ * - 2-segment "owner/repo"       → { owner, repo, skillPath: undefined }
+ * - 3-segment "owner/repo/skill" → { owner, repo, skillPath: "skill" }
+ * - 1-segment "name"             → { owner: "anthropics", repo: name, skillPath: undefined }
  */
-export function parseSkillsShLocator(locator: string): {
+export interface ParsedSkillsShLocator {
   owner: string;
-  name: string;
-} {
+  repo: string;
+  skillPath?: string;
+}
+
+/**
+ * Parse a skills.sh locator.
+ *
+ * Supports:
+ *   - "owner/repo"       → 2-segment, skill at repo root
+ *   - "owner/repo/skill" → 3-segment, skill in subdirectory
+ *   - "skills.sh:owner/repo[/skill]" → prefixed variant
+ *   - "name"             → 1-segment, assumes anthropics org
+ */
+export function parseSkillsShLocator(locator: string): ParsedSkillsShLocator {
   const cleaned = locator.replace(/^skills\.sh:/, "");
   const parts = cleaned.split("/");
 
-  if (parts.length >= 2) {
-    return { owner: parts[0], name: parts.slice(1).join("/") };
+  if (parts.length >= 3) {
+    // 3+ segment: owner/repo/skillPath (skillPath may contain deeper nesting)
+    return {
+      owner: parts[0],
+      repo: parts[1],
+      skillPath: parts.slice(2).join("/"),
+    };
+  }
+
+  if (parts.length === 2) {
+    return { owner: parts[0], repo: parts[1] };
   }
 
   // If no owner specified, assume the skills.sh community namespace
-  return { owner: "anthropics", name: parts[0] };
+  return { owner: "anthropics", repo: parts[0] };
 }
 
 /**
@@ -164,22 +266,65 @@ export function createSkillsShSource(
 
 /**
  * Try to detect default branch (main vs master).
+ * When resolvedPrefix is provided, probes inside that directory.
  */
 async function detectDefaultBranch(
   owner: string,
-  name: string,
+  repo: string,
+  resolvedPrefix?: string,
 ): Promise<string> {
+  const prefix = resolvedPrefix ? `${resolvedPrefix}/` : "";
+
   // Try "main" first since it's the modern default
-  const mainUrl = `${GITHUB_RAW_BASE}/${owner}/${name}/main/SKILL.md`;
+  const mainUrl = `${GITHUB_RAW_BASE}/${owner}/${repo}/main/${prefix}SKILL.md`;
   const mainContent = await fetchText(mainUrl);
   if (mainContent !== null) return "main";
 
   // Fall back to "master"
-  const masterUrl = `${GITHUB_RAW_BASE}/${owner}/${name}/master/SKILL.md`;
+  const masterUrl = `${GITHUB_RAW_BASE}/${owner}/${repo}/master/${prefix}SKILL.md`;
   const masterContent = await fetchText(masterUrl);
   if (masterContent !== null) return "master";
 
   // Default to "main" and let the actual fetch produce the error
+  return "main";
+}
+
+/**
+ * Detect default branch for a skill, handling the case where
+ * the skill's exact in-repo prefix is not yet known.
+ *
+ * For 3-segment selectors, we can't efficiently probe all candidate
+ * directories on both branches. Instead, we use the GitHub API to
+ * check which branch exists, or fall back to probing the most common
+ * candidate locations on each branch.
+ */
+async function detectDefaultBranchForSkill(
+  parsed: ParsedSkillsShLocator,
+): Promise<string> {
+  if (!parsed.skillPath) {
+    return detectDefaultBranch(parsed.owner, parsed.repo);
+  }
+
+  // Try "main" branch with the two most common patterns
+  for (const candidate of [
+    `skills/${parsed.skillPath}`,
+    parsed.skillPath,
+  ]) {
+    const mainUrl = `${GITHUB_RAW_BASE}/${parsed.owner}/${parsed.repo}/main/${candidate}/SKILL.md`;
+    const content = await fetchText(mainUrl);
+    if (content !== null) return "main";
+  }
+
+  // Try "master" with the same patterns
+  for (const candidate of [
+    `skills/${parsed.skillPath}`,
+    parsed.skillPath,
+  ]) {
+    const masterUrl = `${GITHUB_RAW_BASE}/${parsed.owner}/${parsed.repo}/master/${candidate}/SKILL.md`;
+    const content = await fetchText(masterUrl);
+    if (content !== null) return "master";
+  }
+
   return "main";
 }
 
@@ -207,16 +352,89 @@ async function fetchText(url: string): Promise<string | null> {
 }
 
 /**
- * Try to get the repo file tree via GitHub API.
- * Returns relative file paths or empty array on failure.
+ * Common skill directory patterns found in skills.sh repos.
+ * Given a skill name "foo", these are the candidate in-repo paths
+ * where SKILL.md might live (in priority order).
  */
-async function fetchRepoTree(
+const SKILL_DIR_CANDIDATES = [
+  // Direct subdirectory (e.g., foo/SKILL.md)
+  (name: string) => name,
+  // Most common: skills/<name> (anthropics/skills, obra/superpowers, vercel-labs/*, etc.)
+  (name: string) => `skills/${name}`,
+  // Curated / experimental / system subfolders
+  (name: string) => `skills/.curated/${name}`,
+  (name: string) => `skills/.experimental/${name}`,
+  (name: string) => `skills/.system/${name}`,
+  // Agent-specific directories
+  (name: string) => `.agents/skills/${name}`,
+  (name: string) => `.agent/skills/${name}`,
+  (name: string) => `.claude/skills/${name}`,
+];
+
+/**
+ * Resolve the actual in-repo directory prefix for a skill.
+ *
+ * When a user provides "anthropics/skills/frontend-design", the skillPath
+ * is "frontend-design" but the actual SKILL.md may be at:
+ *   - skills/frontend-design/SKILL.md  (most common)
+ *   - frontend-design/SKILL.md         (direct subdirectory)
+ *   - .agents/skills/frontend-design/  (alternative layout)
+ *
+ * This function probes candidate locations and returns the resolved prefix
+ * (e.g., "skills/frontend-design") or null if not found.
+ *
+ * For 2-segment selectors (no skillPath), returns "" (repo root).
+ */
+async function resolveSkillPrefix(
   owner: string,
-  name: string,
+  repo: string,
+  branch: string,
+  skillPath?: string,
+): Promise<string | null> {
+  // No skillPath means the skill is at the repo root
+  if (!skillPath) {
+    const url = `${GITHUB_RAW_BASE}/${owner}/${repo}/${branch}/SKILL.md`;
+    const content = await fetchText(url);
+    return content !== null ? "" : null;
+  }
+
+  // Try each candidate pattern
+  for (const candidateFn of SKILL_DIR_CANDIDATES) {
+    const candidate = candidateFn(skillPath);
+    const url = `${GITHUB_RAW_BASE}/${owner}/${repo}/${branch}/${candidate}/SKILL.md`;
+    const content = await fetchText(url);
+    if (content !== null) {
+      return candidate;
+    }
+  }
+
+  // Last resort: scan the repo tree for a SKILL.md in a directory matching the skill name
+  const tree = await fetchRawRepoTree(owner, repo, branch);
+  if (tree.length > 0) {
+    const skillDirName = skillPath.includes("/")
+      ? skillPath.split("/").pop()!
+      : skillPath;
+    const suffix = `/${skillDirName}/SKILL.md`;
+    const match = tree.find((entry) => entry.endsWith(suffix) || entry === `${skillDirName}/SKILL.md`);
+    if (match) {
+      // Return the directory portion (strip /SKILL.md)
+      return match.slice(0, -"/SKILL.md".length);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Fetch the raw repo tree (all blob paths). Used as a fallback for skill discovery.
+ */
+async function fetchRawRepoTree(
+  owner: string,
+  repo: string,
   branch: string,
 ): Promise<string[]> {
   try {
-    const apiUrl = `https://api.github.com/repos/${owner}/${name}/git/trees/${branch}?recursive=1`;
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
     const response = await fetch(apiUrl, {
       headers: {
         "User-Agent": "skill-installer-mcp/0.1",
@@ -236,6 +454,51 @@ async function fetchRepoTree(
     return data.tree
       .filter((entry) => entry.type === "blob")
       .map((entry) => entry.path);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Try to get the repo file tree via GitHub API.
+ * When skillPath is provided, only returns files within that subdirectory,
+ * with paths relative to the subdirectory (not the repo root).
+ * Returns relative file paths or empty array on failure.
+ */
+async function fetchRepoTree(
+  owner: string,
+  repo: string,
+  branch: string,
+  skillPath?: string,
+): Promise<string[]> {
+  try {
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
+    const response = await fetch(apiUrl, {
+      headers: {
+        "User-Agent": "skill-installer-mcp/0.1",
+        Accept: "application/vnd.github+json",
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!response.ok) return [];
+
+    const data = (await response.json()) as {
+      tree?: Array<{ path: string; type: string }>;
+    };
+
+    if (!data.tree) return [];
+
+    let blobs = data.tree.filter((entry) => entry.type === "blob");
+
+    if (skillPath) {
+      // Scope to the skill's subdirectory and make paths relative
+      const prefix = skillPath + "/";
+      blobs = blobs.filter((entry) => entry.path.startsWith(prefix));
+      return blobs.map((entry) => entry.path.slice(prefix.length));
+    }
+
+    return blobs.map((entry) => entry.path);
   } catch {
     return [];
   }

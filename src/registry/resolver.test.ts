@@ -113,10 +113,15 @@ test("resolver does NOT treat dotted domain as skills.sh", async () => {
   );
 });
 
-test("resolver does NOT treat multi-slash as skills.sh", async () => {
-  // "a/b/c" has more than one slash
+test("resolver detects 3-segment owner/repo/skill as skills.sh", async () => {
+  const result = await resolver.resolve({ name: "anthropics/skills/frontend-design" }, ctx);
+  assert.equal(result.type, "skills.sh");
+  assert.ok(result.locator.includes("anthropics/skills/frontend-design"));
+});
+
+test("resolver does NOT treat 4-segment as skills.sh", async () => {
   await assert.rejects(
-    () => resolver.resolve({ name: "a/b/c" }, ctx),
+    () => resolver.resolve({ name: "a/b/c/d" }, ctx),
     (err: unknown) =>
       err instanceof InstallerError && err.code === "SOURCE_RESOLUTION_FAILED",
   );

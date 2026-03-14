@@ -357,6 +357,38 @@ Reranker menggunakan OpenRouter Chat Completion API (`/v1/chat/completions`). AP
 
 ---
 
+## DEC-017 - Multi-skill repo resolution untuk skills.sh
+
+- Status: `accepted`
+- Date: 2026-03-15
+
+### Context
+Banyak skill di ekosistem skills.sh disimpan dalam multi-skill repos (contoh: `anthropics/skills`, `obra/superpowers`, `vercel-labs/skills`). Skill tidak berada di root repo, tapi di subdirektori `skills/{skill-name}/SKILL.md`. CLI resmi `npx skills` menangani ini dengan cloning repo lalu scanning. Kita perlu solusi yang bekerja tanpa clone.
+
+### Decision
+Implementasi `resolveSkillPrefix()` — fungsi multi-candidate probe yang mencari lokasi aktual skill di repo GitHub via API:
+
+1. Coba `{skillPath}/SKILL.md` (direct path)
+2. Coba `skills/{skillPath}/SKILL.md` (pola paling umum)
+3. Coba pattern lain: `.agents/skills/{skillPath}/`, `.claude/skills/{skillPath}/`, dll.
+4. Fallback: scan repo tree via GitHub Trees API
+
+Selector 3-segment `owner/repo/skill` sekarang diterima oleh resolver dan di-parse sebagai `{ owner, repo, skillPath }`. `detectDefaultBranchForSkill()` probe branch `main` dan `master` secara efisien.
+
+### Rationale
+- tidak perlu clone repo (lebih cepat, lebih ringan)
+- kompatibel dengan semua layout repo yang diketahui di ekosistem skills.sh
+- probe sequential lebih efisien daripada full tree scan untuk kasus umum
+- fallback tree scan menangani layout non-standar
+
+### Impact
+- 3-segment selectors sekarang didukung (`anthropics/skills/frontend-design`)
+- `parseSkillsShLocator` mengembalikan `{ owner, repo, skillPath? }` (breaking change internal)
+- `fetchMetadataOnly` dan `fetchFullSkill` menggunakan `resolveSkillPrefix` sebelum fetch
+- `fetchRepoTree` sekarang scoped ke resolved prefix
+
+---
+
 ## Open Decisions
 
 Belum final dan bisa diputuskan nanti:

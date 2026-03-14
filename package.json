@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node --env-file=.env dist/index.js",
     "dev": "node --env-file=.env --enable-source-maps --loader ts-node/esm src/index.ts",
-    "smoke:local": "node --enable-source-maps --loader ts-node/esm src/scripts/smoke-local-install.ts"
+    "smoke:local": "node --enable-source-maps --loader ts-node/esm src/scripts/smoke-local-install.ts",
+    "smoke:remote": "pnpm build && node --enable-source-maps dist/scripts/smoke-remote-skills-sh.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

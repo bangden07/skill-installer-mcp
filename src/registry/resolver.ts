@@ -47,7 +47,7 @@ export class RegistryResolverImpl implements RegistryResolver {
 
     throw new InstallerError(
       "SOURCE_RESOLUTION_FAILED",
-      `Cannot resolve skill selector: "${nameOrId}". Use a local path, git URL, or skills.sh selector (owner/name).`,
+      `Cannot resolve skill selector: "${nameOrId}". Use a local path, git URL, or skills.sh selector (owner/repo or owner/repo/skill).`,
       { details: { selector } },
     );
   }
@@ -154,11 +154,12 @@ function looksLikeGitUrl(value: string): boolean {
 }
 
 function looksLikeSlashSelector(value: string): boolean {
-  // "owner/name" pattern: exactly one slash, no protocols, no dots in first segment
+  // "owner/repo" (2-segment) or "owner/repo/skill" (3-segment) pattern
+  // No protocols, no dots in first segment
   const parts = value.split("/");
-  if (parts.length !== 2) return false;
+  if (parts.length < 2 || parts.length > 3) return false;
   if (parts[0].includes(".") || parts[0].includes(":")) return false;
-  return parts[0].length > 0 && parts[1].length > 0;
+  return parts.every((p) => p.length > 0);
 }
 
 function resolveGitUrl(value: string): SkillSourceRef {
