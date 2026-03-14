@@ -351,3 +351,230 @@ Tahap 2 akan menambahkan:
 - host config planning/apply/verify/rollback
 
 Karena `skill adapters` dan `host adapters` dipisah, Tahap 2 bisa ditambahkan tanpa membongkar fondasi Tahap 1.
+
+---
+
+# Architecture Tahap 2 — Host Registration
+
+## Overview
+
+Tahap 2 menambahkan **Host Adapter Layer** yang sejajar dengan Skill Adapter Layer. Host adapters bertanggung jawab atas config file management per agent, bukan isi skill.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      MCP Layer                          │
+│  (10 skill tools + 5 host tools, Zod, routing)          │
+├────────────┬──────────┬──────────┬──────────────────────┤
+│  Installer │ Installer│ Analyzer │   Registry           │
+│  Core      │ Host     │          │   (+ cache)          │
+├────────────┴──────────┴──────────┴──────────────────────┤
+│         Skill Adapter Layer (Tahap 1)                    │
+│  cursor │ claude │ opencode │ codex │ windsurf │ amp     │
+├─────────────────────────────────────────────────────────┤
+│         Host Adapter Layer (Tahap 2)                     │
+│  cursor │ claude-desktop │ vscode │ opencode │ wind │amp │
+├─────────────────────────────────────────────────────────┤
+│      Canonical Store + State + Config Backup Store       │
+└─────────────────────────────────────────────────────────┘
+```
+
+## New Architecture Layers (Tahap 2)
+
+### 10. Host Adapter Layer
+Tugas:
+- mendeteksi config file host agent
+- membaca dan parse config
+- membuat backup sebelum write
+- menambahkan/menghapus entry MCP server
+- memvalidasi config setelah write
+- melakukan rollback dari backup
+
+Module:
+- `src/adapters/hosts/base.ts`
+- `src/adapters/hosts/cursor.ts`
+- `src/adapters/hosts/claude-desktop.ts`
+- `src/adapters/hosts/vscode.ts`
+- `src/adapters/hosts/opencode-host.ts`
+- `src/adapters/hosts/windsurf-host.ts`
+- `src/adapters/hosts/amp-host.ts`
+- `src/adapters/hosts/registry.ts`
+
+### 11. Config Backup Store
+Tugas:
+- menyimpan backup config sebelum modifikasi
+- melacak backup history per agent
+- mendukung rollback ke backup terakhir
+- rotasi backup lama
+
+Module:
+- `src/state/config-backup-store.ts`
+
+### 12. Host Registration Core
+Tugas:
+- orchestrate register/unregister flow
+- menangani bundled MCP activation
+- menangani rollback
+- audit config status
+
+Module:
+- `src/installer/host/register-host.ts`
+- `src/installer/host/unregister-host.ts`
+- `src/installer/host/rollback-config.ts`
+- `src/installer/host/activate-bundled-mcp.ts`
+
+## Host Config Locations
+
+### Per Agent
+
+| Agent | Config File | Format | Project Location | Global Location |
+|---|---|---|---|---|
+| Cursor | `mcp.json` | JSON | `.cursor/mcp.json` | `~/.cursor/mcp.json` |
+| Claude Desktop | `claude_desktop_config.json` | JSON | N/A | platform app data |
+| VS Code | `settings.json` | JSONC | `.vscode/settings.json` | user settings dir |
+| OpenCode | `opencode.json` | JSON | `./opencode.json` | N/A |
+| Windsurf | `mcp_config.json` | JSON | N/A | `~/.codeium/windsurf/mcp_config.json` |
+| Amp | config dir | JSON | N/A | `~/.config/amp/` |
+
+### Platform-Specific Paths (Claude Desktop)
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%/Claude/claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+
+### Platform-Specific Paths (VS Code)
+
+- macOS: `~/Library/Application Support/Code/User/settings.json`
+- Windows: `%APPDATA%/Code/User/settings.json`
+- Linux: `~/.config/Code/User/settings.json`
+
+## Config Backup Strategy
+
+Rules:
+- backup WAJIB sebelum setiap write
+- backup disimpan di runtime state dir: `.skill-installer/state/backups/`
+- backup file name: `{agent}-{scope}-{timestamp}.json`
+- max backup per agent: 5 (configurable)
+- rollback selalu menggunakan backup terbaru
+- backup juga menyimpan metadata: `{ agentId, scope, timestamp, reason }`
+
+Backup dir:
+- project: `.skill-installer/state/backups/`
+- global: `~/.config/skill-installer/state/backups/`
+
+## Host Registration Flow
+
+### Register Flow
+1. detect config file location
+2. read current config
+3. create backup
+4. merge new MCP server entry
+5. write config atomically
+6. validate written config
+7. return result + backup path
+
+### Unregister Flow
+1. read current config
+2. create backup
+3. remove MCP server entry
+4. write config atomically
+5. validate written config
+
+### Rollback Flow
+1. read latest backup for agent/scope
+2. validate backup integrity
+3. create backup of current (pre-rollback)
+4. restore from backup
+5. validate restored config
+
+### Audit Flow
+1. iterate all agents
+2. detect config files
+3. parse each config
+4. list registered MCP servers
+5. flag servers managed by skill-installer
+6. report issues (missing files, invalid format, etc.)
+
+## JSONC Handling
+
+VS Code `settings.json` uses JSONC (JSON with Comments). Requirements:
+- parse JSONC correctly (strip comments for data, preserve for write)
+- preserve existing comments when modifying
+- preserve indentation and formatting
+- minimal diff on write
+
+Options:
+- use `jsonc-parser` package (Microsoft's official parser)
+- or implement minimal JSONC read/write utility
+
+Decision: TBD (lihat `planning/decisions.md`)
+
+## MCP Server Entry Format
+
+### Standard format (Cursor, Claude Desktop, Windsurf)
+```json
+{
+  "mcpServers": {
+    "skill-installer": {
+      "command": "npx",
+      "args": ["skill-installer-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+### OpenCode format
+```json
+{
+  "mcp": {
+    "skill-installer": {
+      "command": "npx",
+      "args": ["skill-installer-mcp"]
+    }
+  }
+}
+```
+
+### VS Code format
+```jsonc
+{
+  "mcp": {
+    "servers": {
+      "skill-installer": {
+        "command": "npx",
+        "args": ["skill-installer-mcp"]
+      }
+    }
+  }
+}
+```
+
+## Installer Marker
+
+Untuk membedakan entry yang didaftarkan oleh skill-installer vs manual, tambahkan metadata:
+
+```json
+{
+  "mcpServers": {
+    "skill-installer": {
+      "command": "npx",
+      "args": ["skill-installer-mcp"],
+      "_managedBy": "skill-installer-mcp"
+    }
+  }
+}
+```
+
+Catatan: marker `_managedBy` mungkin tidak didukung semua agent. Jika agent reject unknown fields, gunakan tracking via manifest store saja.
+
+## Error Codes (Tahap 2)
+
+Kode error tambahan:
+- `CONFIG_NOT_FOUND` — config file tidak ditemukan
+- `CONFIG_PARSE_ERROR` — config file invalid
+- `CONFIG_WRITE_ERROR` — gagal write config
+- `BACKUP_FAILED` — gagal membuat backup
+- `ROLLBACK_FAILED` — gagal rollback
+- `SERVER_ALREADY_REGISTERED` — MCP server sudah terdaftar
+- `SERVER_NOT_FOUND` — MCP server tidak ditemukan di config
+- `BUNDLED_MCP_MISSING` — skill tidak memiliki mcp.json

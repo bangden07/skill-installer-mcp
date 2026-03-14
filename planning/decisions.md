@@ -395,3 +395,100 @@ Belum final dan bisa diputuskan nanti:
 - nama final produk
 - apakah state store awal memakai JSON saja atau langsung SQLite
 - apakah global native export untuk beberapa agent akan selalu dibuat atau optional
+
+---
+
+# Decisions Tahap 2
+
+## DEC-018 - Host adapter layer terpisah dari skill adapter layer
+
+- Status: `Accepted`
+- Date: `2026-03-15`
+
+### Decision
+Host config management menggunakan layer adapter terpisah (`src/adapters/hosts/`) yang tidak mengganggu skill adapter (`src/adapters/agents/`).
+
+### Rationale
+Skill adapters menangani file content deployment. Host adapters menangani config file management. Kedua concern ini berbeda dan coupling-nya rendah. Memisahkan keduanya menjaga Tahap 1 tetap stabil saat Tahap 2 dibangun.
+
+### Impact
+- Tahap 1 tidak perlu dimodifikasi
+- host adapter bisa dikembangkan paralel
+- testing per layer lebih fokus
+
+---
+
+## DEC-019 - Backup wajib sebelum setiap config write
+
+- Status: `Accepted`
+- Date: `2026-03-15`
+
+### Decision
+Setiap operasi yang menulis config file agent WAJIB membuat backup terlebih dahulu. Backup disimpan di runtime state dir dan dirotasi (max 5 per agent per scope).
+
+### Rationale
+Config file agent adalah milik user. Kehilangan config bisa sangat disruptif. Backup murah (config files kecil) dan memberikan safety net yang kuat.
+
+### Impact
+- setiap write sedikit lebih lambat (backup + validate)
+- disk usage minimal (config files < 10KB)
+- rollback selalu tersedia
+
+---
+
+## DEC-020 - Config entry marking via manifest store, bukan inline field
+
+- Status: `Accepted`
+- Date: `2026-03-15`
+
+### Decision
+Untuk melacak MCP server mana yang didaftarkan oleh skill-installer, gunakan manifest store sebagai tracker, bukan inline field `_managedBy` di config file.
+
+### Rationale
+- beberapa agent mungkin reject unknown fields
+- manifest store sudah tersedia dan proven
+- tidak mengotori config user
+- audit bisa cross-reference manifest dengan config
+
+### Impact
+- manifest store perlu schema update untuk host registrations
+- audit perlu baca manifest + config file untuk matching
+- jika manifest hilang, tracking hilang (acceptable risk)
+
+---
+
+## DEC-021 - JSONC handling diputuskan saat implementasi
+
+- Status: `Proposed`
+- Date: `2026-03-15`
+
+### Decision
+Pendekatan JSONC (untuk VS Code settings.json) belum final. Dua opsi:
+1. Gunakan `jsonc-parser` package (Microsoft official)
+2. Implementasi targeted edit (find key, insert/remove, tanpa full re-parse)
+
+### Rationale
+Keduanya punya trade-off. `jsonc-parser` lebih robust tapi menambah dependency. Targeted edit lebih ringan tapi lebih fragile.
+
+### Impact
+- decision ini bisa ditunda sampai VS Code host adapter mulai diimplementasi
+- jika `jsonc-parser` dipilih, tambah ke dependencies
+
+---
+
+## DEC-022 - Tahap 2 hanya mendukung local stdio MCP servers
+
+- Status: `Accepted`
+- Date: `2026-03-15`
+
+### Decision
+Tahap 2 hanya mendaftarkan MCP server yang dijalankan secara lokal via stdio (`command` + `args`). Remote MCP servers (SSE, WebSocket) tidak didukung.
+
+### Rationale
+- majority use case MCP saat ini adalah local stdio
+- remote server membutuhkan auth/networking handling yang kompleks
+- scope manageable untuk Tahap 2
+
+### Impact
+- beberapa advanced use case belum terlayani
+- bisa di-extend di Tahap 3 jika diperlukan

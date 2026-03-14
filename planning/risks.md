@@ -349,3 +349,177 @@ Kesimpulan saat ini:
   - `sync_skills`
   - atomic state writes
   - adapter tests
+
+---
+
+# Risks Tahap 2 — Host Registration
+
+## RISK-015 - Config format berubah antar versi agent
+
+- Severity: `High`
+- Likelihood: `Medium`
+
+### Description
+Agent bisa mengubah format config file, lokasi, atau schema antar versi update.
+
+### Impact
+- host adapter gagal parse config
+- write bisa merusak config yang sudah ada
+- registrasi gagal tanpa error yang jelas
+
+### Mitigation
+- selalu buat backup sebelum write
+- validate config setelah write
+- rollback otomatis jika validation gagal
+- version-aware parsing jika diperlukan
+- document known config versions
+
+### Owner
+- host-adapter layer
+
+---
+
+## RISK-016 - JSONC parsing merusak comments/formatting
+
+- Severity: `Medium`
+- Likelihood: `High`
+
+### Description
+VS Code settings.json memakai JSONC. Parse dan re-serialize bisa menghilangkan comments atau mengubah formatting.
+
+### Impact
+- user kehilangan comments di settings.json
+- diff menjadi besar meskipun perubahan kecil
+- user trust menurun
+
+### Mitigation
+- gunakan JSONC parser yang preserve comments (jsonc-parser)
+- atau gunakan targeted edit (patch) alih-alih full re-serialize
+- test khusus untuk comment preservation
+- backup selalu tersedia untuk rollback
+
+### Owner
+- utils/jsonc
+
+---
+
+## RISK-017 - Concurrent config access
+
+- Severity: `High`
+- Likelihood: `Medium`
+
+### Description
+Multiple tools atau proses bisa mengakses config file yang sama secara bersamaan. Agent sendiri mungkin juga menulis ke config.
+
+### Impact
+- race condition pada write
+- config corruption
+- lost updates
+
+### Mitigation
+- gunakan file-level locking (reuse LockStore pattern)
+- atomic write (temp -> rename)
+- read-modify-write cycle yang cepat
+- retry on conflict
+
+### Owner
+- host-adapter + state
+
+---
+
+## RISK-018 - Backup menumpuk tanpa cleanup
+
+- Severity: `Low`
+- Likelihood: `High`
+
+### Description
+Setiap write membuat backup. Tanpa rotation, backup bisa menumpuk.
+
+### Impact
+- disk usage meningkat
+- user bingung backup mana yang relevan
+
+### Mitigation
+- default max 5 backup per agent per scope
+- rotate saat exceeded
+- expose cleanup di audit tool
+- backup size relatif kecil (config files)
+
+### Owner
+- config-backup-store
+
+---
+
+## RISK-019 - Agent reject unknown fields di config
+
+- Severity: `Medium`
+- Likelihood: `Medium`
+
+### Description
+Beberapa agent mungkin menolak field yang tidak dikenali (seperti `_managedBy`) di config MCP server.
+
+### Impact
+- config invalid setelah registrasi
+- agent gagal load MCP server
+
+### Mitigation
+- test field tolerance per agent
+- jika agent strict, track managed servers di manifest store saja
+- jangan tambahkan unknown fields secara default
+
+### Owner
+- host-adapter
+
+---
+
+## RISK-020 - Agent perlu restart untuk reload config
+
+- Severity: `Medium`
+- Likelihood: `High`
+
+### Description
+Beberapa agent tidak auto-reload config setelah file berubah. User harus restart agent secara manual.
+
+### Impact
+- registrasi berhasil tapi server tidak muncul
+- user bingung kenapa tool tidak tersedia
+
+### Mitigation
+- tampilkan warning jelas: "restart agent untuk mengaktifkan"
+- document reload behavior per agent
+- audit tool bisa mendeteksi "registered but not active" jika memungkinkan
+
+### Owner
+- host-adapter + docs
+
+---
+
+## RISK-021 - Claude Desktop config location platform-dependent
+
+- Severity: `Medium`
+- Likelihood: `High`
+
+### Description
+Claude Desktop menyimpan config di lokasi yang berbeda per OS (macOS: Application Support, Windows: AppData, Linux: .config).
+
+### Impact
+- path detection harus platform-aware
+- testing perlu cover 3 platform
+
+### Mitigation
+- implement platform detection di host adapter
+- gunakan `src/utils/platform.ts` yang sudah ada
+- test dengan mock paths
+
+### Owner
+- host-adapter/claude-desktop
+
+---
+
+## Highest Priority Risks (Tahap 2)
+
+1. Config format berubah antar versi agent
+2. Concurrent config access
+3. JSONC parsing merusak comments
+4. Agent reject unknown fields
+5. Agent perlu restart untuk reload config

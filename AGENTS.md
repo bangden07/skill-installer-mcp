@@ -12,11 +12,11 @@ Dokumen ini adalah acuan utama untuk agent yang bekerja di workspace ini.
 Urutan referensi utama:
 
 1. `planning/README.md`
-2. `planning/prd-mvp.md`
+2. `planning/prd-mvp.md` (Tahap 1) / `planning/prd-tahap2.md` (Tahap 2)
 3. `planning/architecture.md`
 4. `planning/compatibility-matrix.md`
 5. `planning/backlog.md`
-6. `planning/sprint-14-days.md`
+6. `planning/sprint-14-days.md` (Tahap 1) / `planning/sprint-tahap2.md` (Tahap 2)
 7. `planning/decisions.md`
 8. `planning/risks.md`
 
@@ -27,9 +27,9 @@ Jika ada kebingungan, konflik, atau kekosongan informasi:
 
 ## Current Product Scope
 
-Project ini adalah MCP server untuk `skill installation` lintas agent.
+Project ini adalah MCP server untuk `skill installation` dan `host registration` lintas agent.
 
-Tahap 1 hanya mencakup:
+### Tahap 1 (COMPLETE)
 - discovery
 - recommendation
 - dry-run planning
@@ -40,11 +40,18 @@ Tahap 1 hanya mencakup:
 - remove
 - doctor
 
-Tahap 1 tidak mencakup:
-- MCP host registration
-- edit config host seperti Cursor/VS Code/Claude
+### Tahap 2 (ACTIVE)
+- MCP host registration (register/unregister MCP servers ke agent configs)
+- config backup dan rollback
+- bundled MCP activation (dari skill yang punya mcp.json)
+- config audit
+- registry caching
+
+### Not In Scope (Tahap 2)
 - OAuth host setup
 - enterprise policy workflow
+- remote MCP servers (SSE/WebSocket)
+- multi-user approval
 
 ## Current Technical Decisions
 
@@ -66,7 +73,7 @@ Tahap 1 tidak mencakup:
 - cocokkan task dengan `planning/backlog.md` dan `planning/sprint-14-days.md`
 
 ### During Coding
-- jangan menambah scope Tahap 2
+- jangan menambah scope di luar Tahap 2 yang sudah direncanakan
 - jangan membuat struktur baru yang bertentangan dengan `planning/architecture.md`
 - utamakan perubahan kecil, jelas, dan konsisten dengan module boundaries yang sudah direncanakan
 - jangan memindahkan source of truth dari planning ke tempat lain
@@ -119,7 +126,7 @@ Gunakan urutan ini:
 ## Definition Of Good Change
 
 Perubahan dianggap baik jika:
-- sesuai scope Tahap 1
+- sesuai scope Tahap 1 atau Tahap 2 yang sudah direncanakan
 - konsisten dengan planning
 - tidak menambah kompleksitas yang tidak perlu
 - memperjelas fondasi untuk langkah berikutnya

@@ -53,17 +53,31 @@ Target agent Tahap 1:
 - Windsurf
 - Amp
 
+## Current Status
+
+- **Tahap 1: COMPLETE** — skill installation MVP fully delivered
+- **Tahap 2: PLANNING** — host registration & config management
+
 ## Planning Files
 
-- `prd-mvp.md` - definisi scope MVP
-- `architecture.md` - desain arsitektur modul, store, adapter, flow
+### Tahap 1 (Complete)
+- `prd-mvp.md` - definisi scope MVP Tahap 1
+- `architecture.md` - desain arsitektur (termasuk Tahap 2 extension)
 - `compatibility-matrix.md` - support matrix per agent
-- `backlog.md` - backlog implementasi per modul/file
-- `sprint-14-days.md` - rencana eksekusi 14 hari
-- `decisions.md` - keputusan arsitektur penting
-- `risks.md` - risiko dan mitigasi
+- `backlog.md` - backlog Tahap 1 (all complete) + Tahap 2
+- `sprint-14-days.md` - rencana eksekusi Tahap 1
+- `decisions.md` - keputusan arsitektur (DEC-001 s/d DEC-022)
+- `risks.md` - risiko dan mitigasi (RISK-001 s/d RISK-021)
 - `daily/` - log harian pengerjaan
 - `weekly/` - ringkasan mingguan sprint
+
+### Tahap 2 (Planning)
+- `prd-tahap2.md` - definisi scope Tahap 2: Host Registration
+- `sprint-tahap2.md` - rencana eksekusi 10 hari
+- backlog Tahap 2 ada di bagian bawah `backlog.md`
+- risiko Tahap 2 ada di bagian bawah `risks.md`
+- decisions Tahap 2 ada di bagian bawah `decisions.md`
+- architecture Tahap 2 ada di bagian bawah `architecture.md`
 
 ## Working Rules
 
@@ -85,8 +99,9 @@ Target agent Tahap 1:
 
 ## Next Immediate Files
 
-1. `planning/backlog.md`
-2. `planning/sprint-14-days.md`
-3. `planning/prd-mvp.md`
-4. `planning/architecture.md`
-5. `planning/compatibility-matrix.md`
+Untuk Tahap 2:
+1. `planning/prd-tahap2.md`
+2. `planning/sprint-tahap2.md`
+3. `planning/backlog.md` (bagian Tahap 2)
+4. `planning/architecture.md` (bagian Tahap 2)
+5. `planning/decisions.md` (DEC-018 s/d DEC-022)
